@@ -373,9 +373,6 @@ void genNextRow(unordered_map<Cover, int, CoverHash, CoverEq>& ALL, int* uncover
 			i = next_rand_idx(randSeq, K - k, maxIdx); // 随机得到下一个待处理的下标
 			realSeq[k] = i; // 用于恢复原有下标顺序
 			coverNum = genNextElem(ALL, nextRow, T, k + 1, V, val, i); // 选出下一个下标对应的取值，返回覆盖数
-
-			if (ALL.size() != oriSize)
-				int x = 3;
 		}
 
 		// 用于获取最优用例
