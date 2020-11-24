@@ -112,6 +112,7 @@ static int* seq; // 表示K个测试项的序列
 static int* maxAppear; // 表示每个取值的出现次数
 static RandSeq* randSeq; // 用于产生随机下标序列
 static int* realSeq; // 用于恢复随机打乱后的下标序列顺序
+static int oriSize = 0;
 
 // 用于寻找下一下标对应取值中，K<T部分的计算
 //   因为配对深度2<= T <=10，所以只需2,3,..,9深度，对应数组大小8
@@ -216,10 +217,11 @@ void coverWithRow(unordered_map<Cover, int, CoverHash, CoverEq>& ALL, int* uncov
 		cov.clear();
 		for (i = 0; i < T; i++)
 			cov.insert(ROW[seq[i]]);
-		if (ALL[cov] == 0) 
-		{
-			ALL[cov] = 1; (*uncoverNum)--;
-		}
+		if (ALL.find(cov) != ALL.end())
+			if (ALL[cov] == 0)
+			{
+				ALL[cov] = 1; (*uncoverNum)--;
+			}
 	} while (next_comb(seq, K, T)); // 在K位中取出T位进行组合
 }
 
@@ -247,11 +249,10 @@ void countAppearInUncover(const unordered_map<Cover, int, CoverHash, CoverEq>& A
 	for (i = 0; i < K; i++)
 		for (j = 0; j < V[i]; j++)
 			maxAppear[val[i][j]] = 0;
-	for (auto itr = ALL.begin(); itr != ALL.end(); itr++)
+	for (auto itr = ALL.begin(); itr != ALL.end(); ++itr)
 		if (itr->second == 0)
 			for (i = 0; i < T; i++)
-				if (itr->first.dat[i] >= 0 && itr->first.dat[i] < V[K - 1] + val[K - 1][0]) // 不知道为什么会越界，所以保护一下
-					maxAppear[itr->first.dat[i]]++;
+				maxAppear[(itr->first).dat[i]]++;
 }
 
 int genNextElem(unordered_map<Cover, int, CoverHash, CoverEq>& ALL,
@@ -300,8 +301,9 @@ int genNextElem(unordered_map<Cover, int, CoverHash, CoverEq>& ALL,
 				cov.clear();
 				for (i = 0; i < T; i++)
 					cov.insert(ROW[seq[i]]);
-				if (ALL[cov] == 0)
-					coverNum++;
+				if (ALL.find(cov) != ALL.end())
+					if (ALL[cov] == 0)
+						coverNum++;
 			} while (next_comb(seq, K, T));
 
 			if (coverNum > maxCoverNum)
@@ -320,7 +322,7 @@ void countCovAppearInUncover(const unordered_map<Cover, int, CoverHash, CoverEq>
 {
 	Cover cov(T);
 	CoversetOfLessT[K - 2].clear();
-	for (auto itr = ALL.begin(); itr != ALL.end(); itr++)
+	for (auto itr = ALL.begin(); itr != ALL.end(); ++itr)
 		if (itr->second == 0)
 		{
 			do {
@@ -351,7 +353,7 @@ void genNextRow(unordered_map<Cover, int, CoverHash, CoverEq>& ALL, int* uncover
 			{
 				maxIdx = i; maxOff = j;
 			}
-	
+
 	// 从当前ALLL中未覆盖的T覆盖中选i个，统计未覆盖的i覆盖数量，存入CoversetOfLessT[i-2]
 	for (i = 2; i < T; i++)
 		countCovAppearInUncover(ALL, T, i);
@@ -371,6 +373,9 @@ void genNextRow(unordered_map<Cover, int, CoverHash, CoverEq>& ALL, int* uncover
 			i = next_rand_idx(randSeq, K - k, maxIdx); // 随机得到下一个待处理的下标
 			realSeq[k] = i; // 用于恢复原有下标顺序
 			coverNum = genNextElem(ALL, nextRow, T, k + 1, V, val, i); // 选出下一个下标对应的取值，返回覆盖数
+
+			if (ALL.size() != oriSize)
+				int x = 3;
 		}
 
 		// 用于获取最优用例
@@ -395,7 +400,8 @@ void AETG(vector<vector<int>>& TC, int T, int K, int* V, int M)
 	//   key:覆盖 val:覆盖的状态{0:未覆盖, 1:覆盖}
 	unordered_map<Cover, int, CoverHash, CoverEq> ALL;
 
-	int sum, i, j;
+	unsigned int sum;
+	int i, j;
 	seq = new int[K]; // 表示K个测试项的序列
 	randSeq = new RandSeq[K]; // 用于产生随机下标序列
 	realSeq = new int[K]; // 用于恢复随机打乱后的下标序列顺序
@@ -417,7 +423,7 @@ void AETG(vector<vector<int>>& TC, int T, int K, int* V, int M)
 	maxAppear = new int[sum]; // 表示每个取值的出现次数
 
 	genAllCov(ALL, T, K, V, val); // 第一步，计算所有从K个正交测试项各自的取值中取出T个，得到的覆盖集合ALL
-
+	oriSize = ALL.size();
 	int uncoverNum = ALL.size();
 	genFirstRow(ALL, &uncoverNum, TC, T, K, val); // 第二步，产生第一行用例
 	while (uncoverNum > 0)
