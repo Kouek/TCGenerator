@@ -18,8 +18,8 @@ class TCGenerator : public QWidget
 public:
 	enum Status {
 		NOT_READY,
-		READ_READY,
-		WRITE_READY,
+		READY_FOR_READ,
+		READY_FOR_WRITE,
 		FROZEN
 	};
 public:
@@ -30,22 +30,20 @@ public:
 	void getDstFilePath();
 	void genTC();
 	void lowStat() {
-		if (stat == WRITE_READY)
-			stat = READ_READY;
-		else if (stat == READ_READY)
-			stat = NOT_READY;
+		if (stat == READY_FOR_WRITE)
+			stat = READY_FOR_READ;
 	}
 	// }
 private:
-	void scanOriFile();
-	void output2Excel();
+	void scanOriFile(); // 扫描并检查源txt文件语法格式，读取测试项及其取值
+	void output2Excel(); // 输出到Excel文件
 
 private:
 	Ui::TCGeneratorClass ui;
 private:
 	Status stat;
-	QList<int> sizeList;
 	QStringList itemList; // 按顺序读入的测试项名
 	QStringList valList; // 按顺序读入的测试值名
-	std::vector<int*> TC; // 结果
+	QList<int> sizeList; // 保存各测试项的取值数
+	std::vector<std::vector<int>> TC; // 结果
 };

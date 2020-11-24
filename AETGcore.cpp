@@ -1,10 +1,12 @@
 #include <stdio.h>
 #include <iostream>
-#include <set>
+#include <unordered_map>
 #include <stack>
 #include <algorithm>
 
 #include "AETGcore.h"
+
+#include <QDebug>
 
 using namespace std;
 
@@ -24,7 +26,6 @@ bool next_comb(int* comb, int n, int k)
 }
 
 // 用于产生随机序列的结构及函数
-// {
 struct RandSeq {
 	RandSeq* next;
 };
@@ -56,32 +57,71 @@ int next_rand_idx(RandSeq* randSeq, int n, int start)
 
 	return rt;
 }
-// }
 
-// T覆盖项的结构与函数
-// {
-struct SetInt {
-	set<int>* dat;
+// T-way覆盖结构及函数
+int cmpINT(const void* a, const void* b) {
+	return *((int*)a) < *((int*)b) ? 1 : 0;
+}
+struct Cover
+{
+	int* dat;
+	int T, size;
+	Cover(int T) : T(T), size(0) {
+		dat = new int[T];
+	}
+	Cover(const Cover& right) {
+		T = right.T;
+		size = right.size;
+		dat = new int[T];
+		memcpy(dat, right.dat, sizeof(int) * T);
+	}
+	~Cover() {
+		delete[] dat;
+	}
+	int idxOf(int v) const {
+		for (int i = 0; i < T; i++)
+			if (dat[i] == v)return i;
+		return -1;
+	}
+	void insert(int v) {
+		dat[size++] = v;
 
-	SetInt(set<int>* _dat) :dat(_dat) {}
-
-	bool operator < (const SetInt& right) const {
-		set<int>::iterator leftItr, rightItr;
-		for (leftItr = dat->begin(), rightItr = right.dat->begin();
-			leftItr != dat->end() && rightItr != right.dat->end();
-			leftItr++, rightItr++)
-			if ((*leftItr) < (*rightItr))return true;
-			else if ((*leftItr) > (*rightItr))return false;
-		if (rightItr != right.dat->end())return true;
-		return false;
+		// Cover满时排序
+		if (size == T)
+			qsort(dat, T, sizeof(int), cmpINT);
+	}
+	void clear() {
+		size = 0;
 	}
 };
-// }
+struct CoverHash {
+	size_t operator()(const Cover& c) const {
+		int sum = 0, i;
+		for (i = 0; i < c.size; i++)
+			sum += c.dat[i];
+		return sum;
+	}
+};
+struct CoverEq {
+	int operator()(const Cover& a, const Cover& b) const {
+		int flag = 1, i;
+		for (i = 0; i < a.size; i++)
+			if (a.dat[i] != b.dat[i]) {
+				flag = 0; break;
+			}
+		return flag;
+	}
+};
 
-void genAllCovSet(set<SetInt>& ALL, int T, int K, int* V, int** val)
+static int* seq; // 表示K个测试项的序列
+static int* maxAppear; // 表示每个取值的出现次数
+static RandSeq* randSeq; // 用于产生随机下标序列
+static int* realSeq; // 用于恢复随机打乱后的下标序列顺序
+
+void genAllCov(unordered_map<Cover, int, CoverHash, CoverEq>& ALL, int T, int K, const int* V, int** val)
 {
-	int* seq = new int[K]; // 表示K个测试项的序列
 	int i;
+	Cover cov(T);
 	for (i = 0; i < K; i++)
 		seq[i] = i;
 
@@ -104,17 +144,17 @@ void genAllCovSet(set<SetInt>& ALL, int T, int K, int* V, int** val)
 		{
 			if (t == T) // 处于叶子节点，可以添加entry入ALL
 			{
-				set<int>* entry = new set<int>();
+				cov.clear();
 				stack<int> tmpidxs(idxs);
 				// 取得当前遍历路径（从根节点到叶节点）所有值
 				// {
 				for (i = T - 1; i >= 0; i--)
 				{
-					entry->insert(val[seq[i]][tmpidxs.top()]);
+					cov.insert(val[seq[i]][tmpidxs.top()]);
 					tmpidxs.pop();
 				}
 				// }
-				ALL.insert(SetInt(entry)); // entry加入ALL
+				ALL[Cover(cov)] = 0; // cov加入ALL
 
 				if (idxs.top() < V[seq[t - 1]] - 1) // 当前叶子节点还有弟，继续遍历弟
 				{
@@ -160,214 +200,177 @@ void genAllCovSet(set<SetInt>& ALL, int T, int K, int* V, int** val)
 			}
 		}
 	} while (next_comb(seq, K, T));
-
-	delete[] seq;
 }
 
-void genAllCovSet(set<SetInt>& ALL, int T, int K, int* val)
+void coverWithRow(unordered_map<Cover, int, CoverHash, CoverEq>& ALL, int* uncoverNum,
+	const vector<int>& ROW,
+	int T, int K)
 {
-	int* seq = new int[K]; // 表示K个测试项的序列
 	int i;
 	for (i = 0; i < K; i++)
 		seq[i] = i;
 
+	Cover cov(T);
 	do {
-		set<int>* entry = new set<int>();
+		cov.clear();
 		for (i = 0; i < T; i++)
-			entry->insert(val[seq[i]]);
-		ALL.insert(SetInt(entry));
-	} while (next_comb(seq, K, T));
-
-	delete[] seq;
-}
-
-void deleteCovSet(set<SetInt>& CS)
-{
-	set<SetInt>::iterator itr;
-	for (itr = CS.begin(); itr != CS.end(); itr++)
-		delete (*itr).dat;
-	CS.clear();
-}
-
-void printCovSet(const set<SetInt>& CS)
-{
-	set<SetInt>::iterator itr;
-	set<int>::iterator itr2;
-	const set<int>* sp;
-	for (itr = CS.begin(); itr != CS.end(); itr++)
-	{
-		sp = (*itr).dat;
-		for (itr2 = sp->begin(); itr2 != sp->end(); itr2++)
-			printf("%d ", *itr2);
-		printf("\n");
-	}
-}
-
-int findMaxCov(int* curMinUnCov, int T, int K, int idx, int* V, int** val, const set<SetInt>& UC, int* curTC)
-{
-	bool isContain;
-	int i, off;
-	int maxCov = 0, maxCovOff = 0, curCov;
-
-	set<SetInt>::iterator itr;
-	set<int>* sp;
-
-	if (K < T) // curTC的大小小于T，UC逐项查找并计数
-		for (off = 0; off < V[idx]; off++)
+			cov.insert(ROW[seq[i]]);
+		if (ALL[cov] == 0) 
 		{
-			curCov = 0;
-			curTC[K - 1] = val[idx][off];
-			for (itr = UC.begin(); itr != UC.end(); itr++)
+			ALL[cov] = 1; (*uncoverNum)--;
+		}
+	} while (next_comb(seq, K, T));
+}
+
+void genFirstRow(unordered_map<Cover, int, CoverHash, CoverEq>& ALL, int* uncoverNum, 
+	vector<vector<int>>& TC,
+	int T, int K, int** val)
+{
+	vector<int> firstRow;
+	for (int i = 0; i < K; i++)
+		firstRow.push_back(val[i][0]);
+
+	int oriUncoverNum = *uncoverNum;
+	coverWithRow(ALL, uncoverNum, firstRow, T, K);
+
+	TC.push_back(firstRow);
+	TC[TC.size() - 1].push_back(oriUncoverNum - *uncoverNum);
+
+	qDebug() << *uncoverNum << "left" << oriUncoverNum - *uncoverNum << "minused";
+}
+
+void countAppearInUncover(const unordered_map<Cover, int, CoverHash, CoverEq>& ALL,
+	int T, int K, const int* V, int** val)
+{
+	int i, j;
+	for (i = 0; i < K; i++)
+		for (j = 0; j < V[i]; j++)
+			maxAppear[val[i][j]] = 0;
+	for (auto itr = ALL.begin(); itr != ALL.end(); itr++)
+		if (itr->second == 0)
+			for (i = 0; i < T; i++)
+				maxAppear[itr->first.dat[i]]++;
+}
+
+int genNextElem(unordered_map<Cover, int, CoverHash, CoverEq>& ALL,
+	vector<int>& ROW,
+	int T, int K, const int* V, int** val, int idx)
+{
+	if (K < T)
+	{
+		int coverNum, maxOff = 0, maxCoverNum = 0, flag;
+		ROW.push_back(val[idx][maxOff]);
+		for (int j = 0; j < V[idx]; j++)
+		{
+			ROW[ROW.size() - 1] = val[idx][j];
+			coverNum = 0;
+			for (auto itr = ALL.begin(); itr != ALL.end(); itr++)
 			{
-				sp = (*itr).dat;
-				isContain = true;
-				for (i = 0; i < K; i++)
-					if (sp->find(curTC[i]) == sp->end())
-					{
-						isContain = false; break;
-					}
-				if (isContain)curCov++;
+				flag = 1;
+				if (itr->second == 0)
+					for (auto itr2 = ALL.begin(); itr2 != ALL.end(); itr2++)
+						if (itr->first.idxOf(val[idx][j]) == -1)
+						{
+							flag = 0; break;
+						}
+				if (flag)coverNum++;
 			}
-			if (curCov > maxCov)
+			if (coverNum > maxCoverNum)
 			{
-				maxCovOff = off; maxCov = curCov;
+				maxOff = j;
+				maxCoverNum = coverNum;
 			}
 		}
+		ROW[ROW.size() - 1] = val[idx][maxOff];
+		return 0;
+	}
 	else
 	{
-		set<SetInt> C, O;
-		*curMinUnCov = UC.size();
-		for (off = 0; off < V[idx]; off++)
+		int i, coverNum, maxOff = 0, maxCoverNum = 0;
+		Cover cov(T);
+		ROW.push_back(val[idx][0]);
+
+		for (int j = 0; j < V[idx]; j++)
 		{
-			curTC[K - 1] = val[idx][off];
-			genAllCovSet(C, T, K, curTC);
-			set_difference(UC.begin(), UC.end(), C.begin(), C.end(), inserter(O, O.begin()));
-			if(O.size() < *curMinUnCov)
-			{
-				maxCovOff = off; *curMinUnCov = O.size();
-			}
-			deleteCovSet(C);
-			O.clear();
-		}
-	}
-
-	return maxCovOff;
-}
-
-void AETGcore(vector<int*>& TC, const set<SetInt>& ALL, int T, int K, int* V, int M, int** val, int sum)
-{
-	int* curTC = new int[K]; // 当前测试用例
-	int i, j;
-	
-	set<SetInt> UC(ALL); // uncovered set未覆盖集合，初始为所有覆盖的集合ALL
-	set<SetInt> curC; // cureent covered set本次覆盖集合
-	set<SetInt> curO; // 本次集合差的输出
-	set<SetInt> C; // 维护本函数genCovSet申请的内存，用后释放
-
-	// 所有测试项的第一个取值构成curC
-	// {
-	for (i = 0; i < K; i++)
-		curTC[i] = val[i][0];
-	
-	TC.push_back(new int[K]);
-	memcpy(TC[0], curTC, sizeof(int) * K); // 保存第一个测试用例
-	
-	genAllCovSet(curC, T, K, curTC);
-	set_difference(UC.begin(), UC.end(), curC.begin(), curC.end(), inserter(curO, curO.begin()));
-	UC = curO; // UC减curC
-	set_union(C.begin(), C.end(), curC.begin(), curC.end(), inserter(C, C.end())); // C维护由genCovSet申请的内存
-	// }
-
-	int idx, off, maxIdx, maxOff;
-	int minUnCov, curMinUnCov;
-	int* cnt = new int[sum]; // 计数
-	int* curSeq = new int[K]; // 当前下标的顺序
-	int* seq = new int[K]; // 下标的顺序
-
-	set<SetInt>::iterator itr;
-	set<int>* sp;
-	set<int>::iterator itr2;
-
-	RandSeq* randSeq = new RandSeq[K]; // 用于产生随机下标序列
-
-	while (UC.size())
-	{
-		// 找到UC中出现最多的取值对应的下标
-		{
-			memset(cnt, 0, sizeof(int) * sum);
-			for (itr = UC.begin(); itr != UC.end(); itr++)
-			{
-				sp = (*itr).dat;
-				for (itr2 = sp->begin(); itr2 != sp->end(); itr2++)
-					cnt[*itr2]++;
-			}
-			maxIdx = maxOff = 0;
-			for (idx = 0; idx < K; idx++)
-				for (off = 0; off < V[idx]; off++)
-					if (cnt[val[idx][off]] > cnt[val[maxIdx][maxOff]])
-					{
-						maxIdx = idx;
-						maxOff = off;
-					}
-		}
-
-		// 产生下一条测试用例，并让UC减去该测试用例的覆盖集合
-		{
-			TC.push_back(new int[K]);
-			minUnCov = UC.size();
-			for (i = 0; i < M; i++)
-			{
-				// 产生M个测试用例，并找出最合适的
-				// {
-				resetRandSeq(randSeq, K);
-				curTC[0] = val[maxIdx][maxOff]; // 固定maxIdx，赋值val[maxIdx][maxOff]
-				curSeq[0] = maxIdx;
-				for (j = 1; j < K; j++)
-				{
-					idx = next_rand_idx(randSeq, K - j, maxIdx); // 固定maxIdx，随机产生下一个下标
-					curSeq[j] = idx; // 记录下标，保留到当前下标顺序curSeq中
-					off = findMaxCov(&curMinUnCov, T,  j + 1, idx, V, val, UC, curTC); // 在val[idx]的V[idx]个值中找出一个，使得其与curTC构成的j+1覆盖在UC中出现最多
-					curTC[j] = val[idx][off]; // 将上面得到的值加入curTC
-				}
-
-				if (curMinUnCov < minUnCov)
-				{
-					memcpy(TC[TC.size() - 1], curTC, sizeof(int) * K); // 记录当前测试用例
-					memcpy(seq, curSeq, sizeof(int) * K); // 记录当前下标顺序
-					minUnCov = curMinUnCov;
-				}
-				// }
-			}
+			for (i = 0; i < K; i++)
+				seq[i] = i;
 			
-			// 将按随机顺序seq排列的TC[*N-1]恢复为按0,1,2,...,K顺序排列
+			ROW[ROW.size() - 1] = val[idx][j];
+			coverNum = 0;
+			do {
+				cov.clear();
+				for (i = 0; i < T; i++)
+					cov.insert(ROW[seq[i]]);
+				if (ALL[cov] == 0)
+					coverNum++;
+			} while (next_comb(seq, K, T));
+
+			if (coverNum > maxCoverNum)
 			{
-				memcpy(curTC, TC[TC.size() - 1], sizeof(int) * K);
-				for (i = 0; i < K; i++)
-					TC[TC.size() - 1][seq[i]] = curTC[i];
+				maxCoverNum = coverNum;
+				maxOff = j;
 			}
-
-			curC.clear(); curO.clear();
-			genAllCovSet(curC, T, K, TC[TC.size() - 1]);
-			set_difference(UC.begin(), UC.end(), curC.begin(), curC.end(), inserter(curO, curO.begin()));
-			UC = curO; // UC减curC
-			set_union(C.begin(), C.end(), curC.begin(), curC.end(), inserter(C, C.end())); // C维护由genCovSet申请的内存
 		}
+		ROW[ROW.size() - 1] = val[idx][maxOff];
+		return maxCoverNum;
 	}
-
-	delete[] randSeq;
-
-	deleteCovSet(C); // 释放本函数中由genCovSet申请的所有内存
-
-	delete[] curTC;
-	delete[] cnt;
-	delete[] curSeq;
-	delete[] seq;
 }
 
-void AETG(vector<int*>& TC, int T, int K, int* V, int M)
+void genNextRow(unordered_map<Cover, int, CoverHash, CoverEq>& ALL, int* uncoverNum,
+	vector<vector<int>>& TC,
+	int T, int K, const int* V, int** val, int M)
 {
-	set<SetInt> ALL; // 表示所有匹配的集合
+	int maxIdx = 0, maxOff = 0, maxV = 0, start;
+	vector<int> nextRow(K + 1);
+	
+	int i, j;
+	countAppearInUncover(ALL, T, K, V, val);
+	for (i = 0; i < K; i++)
+		for (j = 0; j < V[i]; j++)
+			if (maxAppear[val[i][j]] > maxAppear[val[maxIdx][maxOff]])
+			{
+				maxIdx = i; maxOff = j;
+			}
+	TC.push_back(nextRow); // 将队尾作为临时储存变量，储存最大覆盖的row
+
+	int k, coverNum = 0;
+	maxV = 0;
+	for (int m = 0; m < M; m++)
+	{
+		nextRow.clear();
+		nextRow.push_back(val[maxIdx][maxOff]);
+		resetRandSeq(randSeq, K);
+		for (k = 1; k < K; k++)
+		{
+			i = next_rand_idx(randSeq, K - k, maxIdx);
+			realSeq[k] = i;
+			coverNum = genNextElem(ALL, nextRow, T, k + 1, V, val, i);
+		}
+
+		if (coverNum > maxV)
+		{
+			maxV = coverNum;
+			TC[TC.size() - 1] = nextRow;
+		}
+	}
+	
+	int oriUncoverNum = *uncoverNum;
+	coverWithRow(ALL, uncoverNum, TC[TC.size() - 1], T, K);
+	TC[TC.size() - 1].push_back(oriUncoverNum - *uncoverNum);
+
+	qDebug() << *uncoverNum << "left" << oriUncoverNum - *uncoverNum << "minused";
+}
+
+void AETG(vector<vector<int>>& TC, int T, int K, int* V, int M)
+{
+	// 所有的覆盖及对应的状态
+	//   key:覆盖 val:覆盖的状态{0:未覆盖, 1:覆盖}
+	unordered_map<Cover, int, CoverHash, CoverEq> ALL;
+
 	int sum, i;
+	seq = new int[K]; // 表示K个测试项的序列
+	randSeq = new RandSeq[K]; // 用于产生随机下标序列
+	realSeq = new int[K]; // 用于恢复随机打乱后的下标序列顺序
 
 	int** val = NULL; // 表示K个测试项各个的取值可能（顺序生成）
 	// val、sum的初始化
@@ -384,26 +387,21 @@ void AETG(vector<int*>& TC, int T, int K, int* V, int M)
 				val[i][j] = sum++;
 		}
 	}
+	maxAppear = new int[sum]; // 表示每个取值的出现次数
 
-	genAllCovSet(ALL, T, K, V, val); // 产生所有覆盖的集合，存入ALL
+	genAllCov(ALL, T, K, V, val);
 
-	printCovSet(ALL); // 打印ALL
+	int uncoverNum = ALL.size();
+	genFirstRow(ALL, &uncoverNum, TC, T, K, val);
+	while (uncoverNum)
+		genNextRow(ALL, &uncoverNum, TC, T, K, V, val, M);
 
-	AETGcore(TC, ALL, T, K, V, M, val, sum);
-
-	vector<int*>::iterator itr;
-	printf("result:\n");
-	for (itr = TC.begin(); itr != TC.end(); itr++)
+	// 释放
 	{
-		for (i = 0; i < K; i++)
-			printf("%d\t", (*itr)[i]);
-		printf("\n");
-	}
-
-	deleteCovSet(ALL); // 释放ALL维护的由genCovSet申请的所有内存
-
-	// 释放val
-	{
+		delete[] seq;
+		delete[] maxAppear;
+		delete[] randSeq;
+		delete[] realSeq;
 		for (i = 0; i < K; i++)
 			delete[] val[i];
 		delete[] val;

@@ -43,6 +43,8 @@ void TCGenerator::getDstFilePath()
 
 void TCGenerator::output2Excel()
 {
+	static QString excelErrMsg = QString("Excel读写错误");
+
 	QString dstPath = ui.label_dst_path->text();
 	dstPath = dstPath.append("/%1.xlsx").arg(ui.lineEdit_TC_name->text());
 	dstPath = QDir::toNativeSeparators(dstPath);
@@ -50,41 +52,61 @@ void TCGenerator::output2Excel()
 	// Excel写入
 	try
 	{
+		// 获取Excel应用
 		QAxObject* excel = new QAxObject("Excel.Application");
 		excel->dynamicCall("SetVisible (bool Visible)", "false");
 		excel->setProperty("DisplayAlerts", false);
 
+		// 获取工作簿
 		QAxObject* workbooks = excel->querySubObject("Workbooks");
 		workbooks->dynamicCall("Add");
 		QAxObject* workbook = excel->querySubObject("ActiveWorkBook");
 
+		// 获取工作表
 		QAxObject* worksheets = workbook->querySubObject("Sheets");
 		QAxObject* worksheet = worksheets->querySubObject("Item(int)", 1);
 
+		// 进入单元格操作
 		QAxObject* cell = Q_NULLPTR;
 		QStringList::iterator itr;
 		int row, col;
+
+		// 表头
 		for (itr = itemList.begin(), col = 1; itr != itemList.end(); itr++, col++)
 		{
 			cell = worksheet->querySubObject("Cells(int, int)", 1, col);
 			cell->setProperty("Value", *itr);
 		}
-		std::vector<int*>::iterator itr2;
+		cell = worksheet->querySubObject("Cells(int, int)", 1, col++);
+		cell->setProperty("Value", QString("cover_num")); // 表示覆盖数
+		cell = worksheet->querySubObject("Cells(int, int)", 1, col);
+		cell->setProperty("Value", QString("%1_way_cover").arg(ui.spinBox_T_way->value())); // 表示覆盖数
+
+		// 表体
+		std::vector<std::vector<int>>::iterator itr2;
 		for (itr2 = TC.begin(), row = 2; itr2 != TC.end(); itr2++, row++)
+		{
 			for (col = 1; col <= itemList.size(); col++)
 			{
 				cell = worksheet->querySubObject("Cells(int, int)", row, col);
 				cell->setProperty("Value", QString(valList[TC[row - 2][col - 1]]));
 			}
+			cell = worksheet->querySubObject("Cells(int, int)", row, col);
+			cell->setProperty("Value", QString("%1").arg(TC[row - 2][col - 1]));
+		}
 
+		// 保存，释放所有资源
 		workbook->dynamicCall("SaveAs(const QString&)", dstPath);
 		workbook->dynamicCall("Close(Boolean)", false);
 		excel->dynamicCall("Quit(void)");
-		stat = WRITE_READY;
 	}
 	catch (...)
 	{
-
+		QMessageBox msg;
+		msg.resize(this->width() * 3 / 4, this->height() / 4);
+		msg.setWindowTitle("Message");
+		msg.setText(excelErrMsg);
+		msg.exec();
 	}
 }
 
@@ -102,7 +124,7 @@ void TCGenerator::genTC()
 		msg.exec();
 		return;
 	}
-	else if (stat == WRITE_READY)
+	else if (stat == READY_FOR_WRITE)
 	{
 		output2Excel();
 		return;
@@ -120,10 +142,13 @@ void TCGenerator::genTC()
 
 	// AETG
 	{
-		std::vector<int*>::iterator itr2;
-		for (itr2 = TC.begin(); itr2 != TC.end(); itr2++)
-			delete[](*itr2);
-		TC.clear();
+		if (!TC.empty())
+		{
+			std::vector<std::vector<int>>::iterator itr2;
+			for (itr2 = TC.begin(); itr2 != TC.end(); itr2++)
+				(*itr2).clear();
+			TC.clear();
+		}
 
 		int i;
 		QList<int>::iterator itr;
@@ -136,7 +161,6 @@ void TCGenerator::genTC()
 		delete[] V;
 	}
 
-	stat = FROZEN;
 	output2Excel();
 }
 
@@ -181,7 +205,7 @@ void TCGenerator::scanOriFile()
 	}
 	else
 	{
-		stat = READ_READY;
+		stat = READY_FOR_READ;
 		ui.label_ori_info->setText(defaultInfo.arg(itemList.size()));
 	}
 
