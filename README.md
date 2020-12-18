@@ -2,7 +2,7 @@
 ## 前置条件 Precondition
 + 安装Qt。Install Qt.
 + 安装Qt for VisualStudio插件。Install Qt for VisualStudio.
-## 使用方法
+## 使用方法 Way to use
 + 完成前置步骤。Precondition ready.
 + 打开工程。Open .sln.
 ## 注意 Note
